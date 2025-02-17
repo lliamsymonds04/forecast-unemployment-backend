@@ -3,6 +3,7 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 
 from FormatData import format_data
+from util.FormatDate import format_date
 from PredictionModel import PredictionModel
 
 app = Flask(__name__)
@@ -10,13 +11,8 @@ CORS(app)
 
 df = format_data()
 
-@app.route('/')
-def hello_world():  # put application's code here
-    return jsonify(df.to_dict(orient='records'))
-
 @app.route("/api/data/get_period", methods=['GET'])
 def get_data_within_period():
-    # data = request.get_json()
     start = request.args.get('start')
     end = request.args.get('end')
 
@@ -26,7 +22,6 @@ def get_data_within_period():
     period_df: pd.DataFrame = df.loc[(df.index >= start) & (df.index < end)]
 
     return jsonify(period_df.to_dict(orient='records'))
-
 
 @app.route("/api/forecast_unemployment", methods=['GET'])
 def forecast():
@@ -39,9 +34,38 @@ def forecast():
     predictor = PredictionModel(df, start, end, 10, 50)
     prediction = predictor.predict(6, 5, 1.1)
 
-    return jsonify(prediction)
+    return predictor.graph_predictions(prediction)
+
+@app.route("/api/evaluate_model", methods=['GET'])
+def evaluate_model():
+    start = request.args.get('start')
+    end = request.args.get('end')
+
+    if start is None or end is None:
+        return jsonify({"error": "start and end parameters are required"})
+
+    predictor = PredictionModel(df, start, end, 10, 50)
+    return predictor.evaluate_model()
+
+
+
+@app.route("/api/get_interest_and_inflation", methods=['GET'])
+def get_interest_and_inflation():
+    date = request.args.get('date')
+
+    if date is None:
+        return jsonify({"error": "date parameter is required"})
+
+    formatted_date = format_date(date)
+    row = df.loc[df.index <= formatted_date]
+    inflation1 = row.iloc[-1,1]
+    inflation2 = row.iloc[-12,1]
+    inflation = round((inflation1 - inflation2)/inflation2 * 100,2)
+    interest = round(row.iloc[-1, 2],2)
+
+    return jsonify({"interest": interest, "inflation": inflation})
 
 
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run()
