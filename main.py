@@ -7,9 +7,13 @@ from util.FormatDate import format_date
 from PredictionModel import PredictionModel
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={r"/api/*": {"origins": "*"}})
 
 df = format_data()
+
+@app.route("/api/ping", methods=["GET"])
+def ping():
+    return jsonify({})
 
 @app.route("/api/data/get_period", methods=['GET'])
 def get_data_within_period():
