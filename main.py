@@ -38,7 +38,9 @@ def forecast():
     predictor = PredictionModel(df, start, end, 10, 50)
     prediction = predictor.predict(6, 5, 1.1)
 
-    return predictor.graph_predictions(prediction)
+    # return predictor.graph_predictions(prediction)
+    data = predictor.graph_predictions(prediction)
+    return jsonify(data.to_json(orient='records'))
 
 @app.route("/api/evaluate_model", methods=['GET'])
 def evaluate_model():
@@ -49,7 +51,9 @@ def evaluate_model():
         return jsonify({"error": "start and end parameters are required"})
 
     predictor = PredictionModel(df, start, end, 10, 50)
-    return predictor.evaluate_model()
+    # return predictor.evaluate_model()
+    data = predictor.evaluate_model()
+    return jsonify(data.to_json(orient='records'))
 
 
 

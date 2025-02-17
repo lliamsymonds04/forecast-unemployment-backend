@@ -32,13 +32,13 @@ def create_sequences(data: torch.Tensor, seq_length: int):
         ys.append(y)
     return torch.stack(xs), torch.stack(ys)
 
-def convert_plt_to_img():
-    img = io.BytesIO()
-    plt.savefig(img, format='png', bbox_inches='tight')
-    plt.close()
-    img.seek(0)
-
-    return Response(img.getvalue(), mimetype='image/png')
+# def convert_plt_to_img():
+#     img = io.BytesIO()
+#     plt.savefig(img, format='png', bbox_inches='tight')
+#     plt.close()
+#     img.seek(0)
+#
+#     return Response(img.getvalue(), mimetype='image/png')
 
 class PredictionModel:
     def __init__(self, df: pd.DataFrame, training_start_date: str, training_end_date: str, sequence_length: int, num_epochs: int):
@@ -156,11 +156,12 @@ class PredictionModel:
         pred_df = pd.concat([baseline_df, pred_df])
         data = pd.concat([data, pred_df])
 
-        plt.figure(figsize=(6, 4))
-        sns.lineplot(x=data.index, y="Unemployment", data=data)
-        sns.lineplot(x=data.index, y="Unemployment_Predicted", data=data, label="Predicted", linestyle="dashed")
-
-        return convert_plt_to_img()
+        # plt.figure(figsize=(6, 4))
+        # sns.lineplot(x=data.index, y="Unemployment", data=data)
+        # sns.lineplot(x=data.index, y="Unemployment_Predicted", data=data, label="Predicted", linestyle="dashed")
+        #
+        # return convert_plt_to_img()
+        return data
 
 
     def evaluate_model(self):
@@ -180,8 +181,8 @@ class PredictionModel:
         mse = mean_squared_error(y_test_original, y_pred_original)
         rmse = np.sqrt(mse)
 
-        print(f"Mean Squared Error (MSE): {mse:.4f}")
-        print(f"Root Mean Squared Error (RMSE): {rmse:.4f}")
+        # print(f"Mean Squared Error (MSE): {mse:.4f}")
+        # print(f"Root Mean Squared Error (RMSE): {rmse:.4f}")
 
         test_dates = self.test_df.index[self.sequence_length:]
         df_plot = pd.DataFrame({
@@ -190,20 +191,21 @@ class PredictionModel:
             "Predicted": y_pred_original
         })
 
-        # Set Seaborn style
-        sns.set_style("whitegrid")
-
-        # Plot with Seaborn
-        plt.figure(figsize=(12, 6))
-        sns.lineplot(data=df_plot, x="Date", y="Actual", label="Actual", color="blue")
-        ax = sns.lineplot(data=df_plot, x="Date", y="Predicted", label="Predicted", color="red", linestyle="dashed")
-
-        ax.text(0.7, 0.9, f"MSE: {round(mse, 3)}", transform=ax.transAxes)
-        ax.text(0.7, 0.85, f"RMSE: {round(rmse, 3)}", transform=ax.transAxes)
-
-        plt.title("Predicted vs. Actual Unemployment Rate", fontsize=20)
-        plt.xticks(rotation=45)
-        plt.ylabel("Unemployment Rate %")
-        plt.tight_layout()
-
-        return convert_plt_to_img()
+        return df_plot
+        # # Set Seaborn style
+        # sns.set_style("whitegrid")
+        #
+        # # Plot with Seaborn
+        # plt.figure(figsize=(12, 6))
+        # sns.lineplot(data=df_plot, x="Date", y="Actual", label="Actual", color="blue")
+        # ax = sns.lineplot(data=df_plot, x="Date", y="Predicted", label="Predicted", color="red", linestyle="dashed")
+        #
+        # ax.text(0.7, 0.9, f"MSE: {round(mse, 3)}", transform=ax.transAxes)
+        # ax.text(0.7, 0.85, f"RMSE: {round(rmse, 3)}", transform=ax.transAxes)
+        #
+        # plt.title("Predicted vs. Actual Unemployment Rate", fontsize=20)
+        # plt.xticks(rotation=45)
+        # plt.ylabel("Unemployment Rate %")
+        # plt.tight_layout()
+        #
+        # return convert_plt_to_img()
