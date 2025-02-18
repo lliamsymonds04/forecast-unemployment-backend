@@ -1,15 +1,11 @@
 import math
-from flask import Response
 import pandas as pd
 import numpy as np
 import torch
 import torch.nn as nn
-import seaborn as sns
-import matplotlib.pyplot as plt
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.metrics import mean_squared_error
 from torch.utils.data import DataLoader, TensorDataset
-import io
 
 class UnemploymentForecastModel(nn.Module):
     def __init__(self, input_size: int, hidden_size: int, output_size: int, num_layers=1):
@@ -31,14 +27,6 @@ def create_sequences(data: torch.Tensor, seq_length: int):
         xs.append(x)
         ys.append(y)
     return torch.stack(xs), torch.stack(ys)
-
-# def convert_plt_to_img():
-#     img = io.BytesIO()
-#     plt.savefig(img, format='png', bbox_inches='tight')
-#     plt.close()
-#     img.seek(0)
-#
-#     return Response(img.getvalue(), mimetype='image/png')
 
 class PredictionModel:
     def __init__(self, df: pd.DataFrame, training_start_date: str, training_end_date: str, sequence_length: int, num_epochs: int):
@@ -68,10 +56,10 @@ class PredictionModel:
         # Create DataLoader
         train_dataset = TensorDataset(X_train, y_train)
         test_dataset = TensorDataset(X_test, y_test)
-        train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
+        train_loader = DataLoader(train_dataset, batch_size=8, shuffle=True)
 
         # Initialize the model
-        model = UnemploymentForecastModel(input_size=training_df.shape[1], hidden_size=50, output_size=1)
+        model = UnemploymentForecastModel(input_size=training_df.shape[1], hidden_size=20, output_size=1)
 
         criterion = nn.MSELoss()
         optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
@@ -156,11 +144,6 @@ class PredictionModel:
         pred_df = pd.concat([baseline_df, pred_df])
         data = pd.concat([data, pred_df])
 
-        # plt.figure(figsize=(6, 4))
-        # sns.lineplot(x=data.index, y="Unemployment", data=data)
-        # sns.lineplot(x=data.index, y="Unemployment_Predicted", data=data, label="Predicted", linestyle="dashed")
-        #
-        # return convert_plt_to_img()
         return data
 
 
@@ -181,9 +164,6 @@ class PredictionModel:
         mse = mean_squared_error(y_test_original, y_pred_original)
         rmse = np.sqrt(mse)
 
-        # print(f"Mean Squared Error (MSE): {mse:.4f}")
-        # print(f"Root Mean Squared Error (RMSE): {rmse:.4f}")
-
         test_dates = self.test_df.index[self.sequence_length:]
         df_plot = pd.DataFrame({
             "Date": test_dates,  # You can replace with actual date indices
@@ -192,20 +172,3 @@ class PredictionModel:
         })
 
         return df_plot
-        # # Set Seaborn style
-        # sns.set_style("whitegrid")
-        #
-        # # Plot with Seaborn
-        # plt.figure(figsize=(12, 6))
-        # sns.lineplot(data=df_plot, x="Date", y="Actual", label="Actual", color="blue")
-        # ax = sns.lineplot(data=df_plot, x="Date", y="Predicted", label="Predicted", color="red", linestyle="dashed")
-        #
-        # ax.text(0.7, 0.9, f"MSE: {round(mse, 3)}", transform=ax.transAxes)
-        # ax.text(0.7, 0.85, f"RMSE: {round(rmse, 3)}", transform=ax.transAxes)
-        #
-        # plt.title("Predicted vs. Actual Unemployment Rate", fontsize=20)
-        # plt.xticks(rotation=45)
-        # plt.ylabel("Unemployment Rate %")
-        # plt.tight_layout()
-        #
-        # return convert_plt_to_img()
