@@ -1,11 +1,14 @@
 import math
-import pandas as pd
-import numpy as np
 import torch
+import numpy as np
 import torch.nn as nn
-from sklearn.preprocessing import MinMaxScaler
-from sklearn.metrics import mean_squared_error
 from torch.utils.data import DataLoader, TensorDataset
+from dateutil.relativedelta import relativedelta
+
+from DataLoader import DataFrameLike
+from util.MinMaxScaler import MinMaxScaler
+from util.DateUtils import get_data_in_range, str_to_datetime, get_date_ranges
+
 
 class UnemploymentForecastModel(nn.Module):
     def __init__(self, input_size: int, hidden_size: int, output_size: int, num_layers=1):
@@ -28,24 +31,24 @@ def create_sequences(data: torch.Tensor, seq_length: int):
         ys.append(y)
     return torch.stack(xs), torch.stack(ys)
 
+
 class PredictionModel:
-    def __init__(self, df: pd.DataFrame, training_start_date: str, training_end_date: str, sequence_length: int, num_epochs: int):
+    def __init__(self, df: DataFrameLike, training_start_date: str, training_end_date: str, sequence_length: int, num_epochs: int):
         self.df = df
         self.training_start_date = training_start_date
         self.training_end_date = training_end_date
         self.sequence_length = sequence_length
         self.num_epochs = num_epochs
 
-        training_df: pd.DataFrame = df.loc[(df.index >= training_start_date) & (df.index < training_end_date)]
-        test_df: pd.DataFrame = df.loc[df.index >= training_end_date]
-        scaler = MinMaxScaler()
+        training_df = get_data_in_range(self.df, training_start_date, training_end_date)
+        test_df = get_data_in_range(self.df, training_end_date)
 
         self.training_df = training_df
         self.test_df = test_df
-        self.scaler = scaler
+        self.scaler = MinMaxScaler()
 
-        training_scaled = scaler.fit_transform(training_df)
-        test_scaled = scaler.transform(test_df)
+        test_scaled = self.scaler.transform(test_df)
+        training_scaled = self.scaler.transform(training_df)
 
         training_data = torch.tensor(training_scaled, dtype=torch.float32)
         test_data = torch.tensor(test_scaled, dtype=torch.float32)
@@ -59,7 +62,7 @@ class PredictionModel:
         train_loader = DataLoader(train_dataset, batch_size=8, shuffle=True)
 
         # Initialize the model
-        model = UnemploymentForecastModel(input_size=training_df.shape[1], hidden_size=20, output_size=1)
+        model = UnemploymentForecastModel(input_size=len(df["columns"]), hidden_size=20, output_size=1)
 
         criterion = nn.MSELoss()
         optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
@@ -82,29 +85,19 @@ class PredictionModel:
         self.X_test = X_test
         self.y_test = y_test
 
+
     def predict(self, months: int, interest_rate: float, inflation_rate: float):
-        # Get the last unemployment sequence
-        last_unemployment = self.training_df["Unemployment"].values[-self.sequence_length:]
+        new_input = self.training_df[-self.sequence_length:]
 
-        # Set fixed values for interest rate and inflation
-        inflation_multi = math.pow(inflation_rate/100, 1/12)
-        current_inflation = self.training_df["Inflation"].values[-1] * inflation_multi
+        inflation_multi = math.pow((100+inflation_rate)/100, 1/12)
 
-        # Store predictions
+        forecasted_months = []
         predictions = []
 
-        # Loop for multiple forecast steps
-        for _ in range(months):
-            # Create a new input sequence
-            new_input = np.column_stack((
-                last_unemployment,  # Unemployment (previous step)
-                np.full(self.sequence_length, current_inflation),  # Inflation
-                np.full(self.sequence_length, interest_rate)  # Interest Rate
-            ))
+        start_date = str_to_datetime(self.training_end_date)
 
-            # Convert to DataFrame and normalize
-            new_input_df = pd.DataFrame(new_input, columns=self.training_df.columns)
-            new_input_scaled = self.scaler.transform(new_input_df)
+        for _ in range(months):
+            new_input_scaled = self.scaler.transform(new_input)
 
             # Convert to PyTorch tensor
             new_input_tensor = torch.tensor(new_input_scaled, dtype=torch.float32).unsqueeze(0)
@@ -112,63 +105,40 @@ class PredictionModel:
             # Predict using the model
             self.model.eval()
             with torch.no_grad():
-                prediction = self.model(new_input_tensor)
+                prediction: torch.Tensor = self.model(new_input_tensor)
 
-            # Inverse transform the prediction
-            prediction_original = self.scaler.inverse_transform(
-                np.concatenate([prediction.numpy(), np.zeros((1, self.training_df.shape[1] - 1))], axis=1)
-            )[0, 0]
+            v: float = prediction.item()
+            original = self.scaler.inverse_transform([[v,0.0,0.0]])[0][0]
 
-            # Append the prediction
-            predictions.append(float(prediction_original))
+            predictions.append(original)
+            new_input.pop(0)
+            new_input.append([original, new_input[-1][1] * inflation_multi, interest_rate])
 
-            # Update last unemployment values by shifting and adding new prediction
-            last_unemployment = np.roll(last_unemployment, -1)
-            last_unemployment[-1] = prediction_original
+            start_date += relativedelta(months=1)
+            forecasted_months.append(start_date.strftime("%Y-%m-%d"))
 
-            #update the inflation trend
-            current_inflation *= inflation_multi
-
-        return predictions
-
-
-    def graph_predictions(self, predictions: list[float]):
-        data: pd.DataFrame = self.training_df.copy()
-
-        last_date = data.index.max()
-        last_unemployment = data.iloc[-1, 0]
-        future_dates = pd.date_range(start=last_date, periods=len(predictions) + 2, freq='MS')[1:]
-
-        baseline_df = pd.DataFrame({'Unemployment_Predicted': [last_unemployment]}, index=[future_dates[0]])
-        pred_df = pd.DataFrame({'Unemployment_Predicted': predictions}, index=future_dates[1:])
-        pred_df = pd.concat([baseline_df, pred_df])
-        data = pd.concat([data, pred_df])
-
-        return data
+        return {
+            "index": forecasted_months,
+            "data": predictions,
+        }
 
 
     def evaluate_model(self):
         self.model.eval()  # Set model to evaluation mode
         with torch.no_grad():
-            predictions = self.model(self.X_test).squeeze().numpy()
+            predictions: np.ndarray = self.model(self.X_test).squeeze().numpy()
 
-        # Convert back to original scale
-        y_test_original = self.scaler.inverse_transform(
-            np.concatenate([self.y_test.numpy().reshape(-1, 1), np.zeros((len(self.y_test), self.df.shape[1] - 1))],
-                           axis=1))[:, 0]
-        y_pred_original = self.scaler.inverse_transform(
-            np.concatenate([predictions.reshape(-1, 1), np.zeros((len(predictions), self.df.shape[1] - 1))], axis=1))[:,
-                          0]
+        scaled: list[float] = predictions.tolist()
 
-        # Compute evaluation metrics
-        mse = mean_squared_error(y_test_original, y_pred_original)
-        rmse = np.sqrt(mse)
+        useless_array = [0.0] * len(scaled)
 
-        test_dates = self.test_df.index[self.sequence_length:]
-        df_plot = pd.DataFrame({
-            "Date": test_dates,  # You can replace with actual date indices
-            "Actual": y_test_original,
-            "Predicted": y_pred_original
-        })
+        zipped = list(zip(scaled, useless_array, useless_array))
+        zipped_lists = [list(item) for item in zipped]
+        unscaled = self.scaler.inverse_transform(zipped_lists)
 
-        return df_plot
+        return {
+            "index": self.df["index"][0:-self.sequence_length],
+            "actual": list(zip(*self.df["data"]))[0][0:-self.sequence_length],
+            "predictions": list(zip(*unscaled))[0],
+            "prediction_index": get_date_ranges(self.df, self.training_end_date)[0:-self.sequence_length],
+        }

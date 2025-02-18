@@ -1,5 +1,4 @@
-FROM python:3.11-slim
-LABEL authors="temp"
+FROM python:3.11-slim-buster
 
 WORKDIR /app
 
