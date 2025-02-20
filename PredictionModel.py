@@ -7,7 +7,7 @@ from dateutil.relativedelta import relativedelta
 
 from DataLoader import DataFrameLike
 from util.MinMaxScaler import MinMaxScaler
-from util.DateUtils import get_data_in_range, str_to_datetime, get_date_ranges
+from util.DateUtils import get_data_in_range, str_to_datetime, get_date_ranges, find_date_index
 
 
 class UnemploymentForecastModel(nn.Module):
@@ -123,7 +123,7 @@ class PredictionModel:
         }
 
 
-    def evaluate_model(self):
+    def evaluate_model(self, evaluation_range: int):
         self.model.eval()  # Set model to evaluation mode
         with torch.no_grad():
             predictions: np.ndarray = self.model(self.X_test).squeeze().numpy()
@@ -136,9 +136,16 @@ class PredictionModel:
         zipped_lists = [list(item) for item in zipped]
         unscaled = self.scaler.inverse_transform(zipped_lists)
 
+        expected_df = self.test_df[:-self.sequence_length]
+        expected = list(zip(*expected_df))[0][:evaluation_range]
+        observed = list(zip(*unscaled))[0][:evaluation_range]
+
+        test_date_index = find_date_index(self.df, str_to_datetime(self.training_end_date)) + 1
+        dates = self.df["index"][test_date_index:(test_date_index+evaluation_range)]
+
+
         return {
-            "index": self.df["index"][0:-self.sequence_length],
-            "actual": list(zip(*self.df["data"]))[0][0:-self.sequence_length],
-            "predictions": list(zip(*unscaled))[0],
-            "prediction_index": get_date_ranges(self.df, self.training_end_date)[0:-self.sequence_length],
+            "index": dates,
+            "expected": expected,
+            "predictions": observed,
         }

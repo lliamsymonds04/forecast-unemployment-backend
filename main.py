@@ -41,12 +41,16 @@ def forecast():
 def evaluate_model():
     start = request.args.get('start')
     end = request.args.get('end')
+    eval_range = request.args.get("eval_range")
 
     if start is None or end is None:
         return jsonify({"error": "start and end parameters are required"})
 
+    if eval_range is None:
+        eval_range = 24
+
     predictor = PredictionModel(df, start, end, 10, 50)
-    data = predictor.evaluate_model()
+    data = predictor.evaluate_model(eval_range)
     return jsonify(data)
 
 
